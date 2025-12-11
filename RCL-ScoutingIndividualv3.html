@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador Informe Individual - RCL Scout (Fix PDF)</title>
+    <style>
+        /* --- RESET GLOBAL PARA EVITAR DESBORDAMIENTOS --- */
+        * {
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0e2b4b; /* Azul RCL */
+            --secondary: #f4f6f8;
+            --accent: #2c5282;
+            --text: #333;
+            --border: #ddd;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--secondary);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* --- ESTILOS DE IMPRESIÓN (PDF) OPTIMIZADOS --- */
+        @page { 
+            size: A4; 
+            margin: 1cm; /* Margen seguro */
+        }
+        
+        @media print {
+            body { 
+                background: white; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+                margin: 0; 
+                padding: 0;
+                width: 100%;
+            }
+
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            
+            /* Contenedor principal al 100% del ancho del papel */
+            .container { 
+                box-shadow: none; 
+                max-width: 100% !important; 
+                width: 100% !important; 
+                padding: 0; 
+                margin: 0; 
+                border: none;
+            }
+            
+            /* Evitar cortes feos */
+            .zone-box, .player-card, .conc-item, .info-grid { 
+                page-break-inside: avoid; 
+                break-inside: avoid; 
+            }
+
+            /* Forzar que nada exceda el ancho */
+            img { max-width: 100% !important; }
+
+            /* Compactación para impresión */
+            h2, h3 { margin-top: 10px !important; margin-bottom: 5px !important; }
+            .matrix-container { gap: 15px !important; }
+            
+            a { text-decoration: none; color: var(--accent); font-weight: bold; }
+        }
+
+        /* --- INTERFAZ EDITOR --- */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid var(--primary); padding-bottom: 20px; }
+        h1 { color: var(--primary); margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+
+        .form-section { margin-bottom: 30px; border: 1px solid #eee; padding: 20px; border-radius: 8px; }
+        .form-section h3 { margin-top: 0; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 10px; }
+
+        .row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px; }
+        .col { flex: 1; min-width: 250px; }
+        
+        label { display: block; font-size: 0.85em; font-weight: bold; color: #555; margin-bottom: 5px; }
+        input, select, textarea { 
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; 
+            box-sizing: border-box; font-family: inherit; font-size: 0.95em;
+        }
+        textarea { height: 70px; resize: vertical; }
+
+        .btn-generate {
+            display: block; width: 100%; padding: 15px; margin-top: 30px;
+            background: #28a745; color: white; font-size: 1.2em; font-weight: bold;
+            border: none; border-radius: 5px; cursor: pointer; transition: 0.3s;
+        }
+        .btn-generate:hover { background: #218838; }
+
+        /* --- VISTA PREVIA / REPORTE FINAL --- */
+        .print-only { display: none; }
+        
+        .report-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid var(--primary); padding-bottom: 10px; margin-bottom: 15px; }
+        .report-logo { height: 70px; width: auto; object-fit: contain; }
+
+        /* Tarjeta de Jugador */
+        .player-card {
+            display: flex; gap: 20px; align-items: flex-start;
+            background: #f0f7ff; border: 1px solid #cce5ff; 
+            padding: 15px; border-radius: 8px; margin-bottom: 15px;
+            width: 100%; /* Asegurar ancho completo */
+        }
+        .player-img-container { flex-shrink: 0; }
+        .player-img { 
+            width: 110px; height: 110px; 
+            border-radius: 50%; object-fit: cover; 
+            border: 3px solid white; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            background: #eef;
+        }
+        .player-info { 
+            flex: 1; 
+            display: grid; grid-template-columns: repeat(2, 1fr); 
+            gap: 5px 20px; font-size: 0.9em; 
+        }
+        .info-item { display: flex; justify-content: space-between; border-bottom: 1px dotted #ccc; padding-bottom: 2px; }
+        .info-label { font-weight: bold; color: var(--accent); }
+        .info-val { font-weight: 600; color: #333; text-align: right; word-break: break-word; }
+
+        .rating-badge {
+            background: var(--primary); color: white; padding: 1px 6px; border-radius: 4px; font-weight: bold; font-size: 0.9em;
+        }
+
+        /* Context Bar */
+        .context-bar {
+            background: #f9f9f9; border: 1px solid #eee; padding: 8px 12px;
+            font-size: 0.85em; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+            margin-bottom: 15px; border-radius: 5px; color: #555;
+            width: 100%;
+        }
+
+        /* Matriz Análisis: Usamos GRID para evitar cortes laterales */
+        .matrix-container { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; /* Dos columnas exactas del 50% */
+            gap: 20px; 
+            margin-bottom: 15px; 
+            width: 100%;
+        }
+        
+        .matrix-header {
+            text-align: center; color: white; padding: 6px; font-weight: bold; font-size: 0.95em;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; border-radius: 4px;
+        }
+        .header-possession { background: #2c5282; } 
+        .header-nopossession { background: #c4302b; }
+
+        .zone-box { 
+            margin-bottom: 10px; padding: 8px 10px; 
+            background: #fff; border-left: 3px solid #ddd;
+            page-break-inside: avoid;
+        }
+        .zone-title { font-weight: bold; font-size: 0.9em; color: #444; display: block; margin-bottom: 3px; text-decoration: underline; }
+        
+        .zone-text { font-size: 0.9em; line-height: 1.4; text-align: justify; }
+
+        /* Conclusiones */
+        .conclusions-box { margin-top: 10px; width: 100%; }
+        .conc-item { margin-bottom: 10px; page-break-inside: avoid; }
+        .conc-label { font-weight: bold; color: var(--primary); display: block; margin-bottom: 3px; font-size: 0.95em; border-bottom: 1px solid #eee;}
+
+        .video-btn {
+            display: inline-block; margin-top: 3px; font-size: 0.75em; 
+            color: #d93025; font-weight: bold; text-decoration: none; 
+            background: #fff0f0; padding: 2px 6px; border-radius: 3px; border: 1px solid #ffcccc;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container no-print" id="editorInterface">
+    <header>
+        <h1>Generador Informe Individual</h1>
+        <p>RCL Scout Group</p>
+        <div style="background:#eef; padding:10px; border-radius:5px; text-align: left; margin-top:10px;">
+            <label>Logo de la Empresa (RCL):</label>
+            <input type="file" id="inp_logo" accept="image/*">
+        </div>
+    </header>
+
+    <div class="form-section">
+        <h3>1. Perfil del Jugador</h3>
+        <div class="row">
+            <div class="col">
+                <label>Nombre Completo</label><input type="text" id="inp_name">
+                <label>Edad</label><input type="text" id="inp_age">
+                <label>Posición</label><input type="text" id="inp_pos">
+                <label>Club Actual</label><input type="text" id="inp_club">
+                <label>Foto del Jugador</label><input type="file" id="inp_photo" accept="image/*">
+            </div>
+            <div class="col">
+                <label>Valoración (0-10)</label><input type="number" id="inp_rating" max="10" step="0.1">
+                <label>Potencial</label><input type="text" id="inp_potential">
+                <label>Recomendación</label>
+                <select id="inp_rec">
+                    <option>Seguimiento</option>
+                    <option>Fichar Prioritario</option>
+                    <option>Fichar Opción B</option>
+                    <option>Descartar</option>
+                </select>
+                <label>Agencia / Representante</label><input type="text" id="inp_agency">
+                <label>Fin de Contrato</label><input type="text" id="inp_contract">
+                <label>Link Perfil (Transfermarkt/Besoccer)</label><input type="text" id="inp_link">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>2. Contexto del Partido</h3>
+        <div class="row">
+            <div class="col">
+                <label>Fecha</label><input type="date" id="inp_date">
+                <label>Equipo Local</label><input type="text" id="inp_home">
+                <label>Equipo Visitante</label><input type="text" id="inp_away">
+                <label>Resultado (HT / FT)</label><input type="text" id="inp_score" placeholder="Ej: HT 0-0 / FT 2-1">
+            </div>
+            <div class="col">
+                <label>Competición</label><input type="text" id="inp_comp">
+                <label>Localización / Estadio</label><input type="text" id="inp_loc">
+                <label>Clima</label><input type="text" id="inp_weather">
+                <label>Scout</label><input type="text" id="inp_scout">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>3. Análisis Táctico (Matriz)</h3>
+        <div class="row">
+            <div class="col" style="background:#f0f8ff; padding:15px; border-radius:5px;">
+                <h4 style="color:#0e2b4b; margin-top:0;">EN POSESIÓN (Con Balón)</h4>
+                
+                <label>Zona Inicio / Defensiva</label>
+                <textarea id="inp_in_def"></textarea>
+                <input type="text" id="vid_in_def" placeholder="Link Video Inicio">
+                
+                <label style="margin-top:10px;">Zona Creación / Transición Ofensiva</label>
+                <textarea id="inp_in_tra"></textarea>
+                <input type="text" id="vid_in_tra" placeholder="Link Video Creación">
+
+                <label style="margin-top:10px;">Zona Finalización / Ataque</label>
+                <textarea id="inp_in_att"></textarea>
+                <input type="text" id="vid_in_att" placeholder="Link Video Finalización">
+            </div>
+
+            <div class="col" style="background:#fff0f0; padding:15px; border-radius:5px;">
+                <h4 style="color:#c4302b; margin-top:0;">SIN POSESIÓN (Sin Balón)</h4>
+
+                <label>Presión / Zona Ataque</label>
+                <textarea id="inp_out_att"></textarea>
+                <input type="text" id="vid_out_att" placeholder="Link Video Presión">
+
+                <label style="margin-top:10px;">Repliegue / Transición Defensiva</label>
+                <textarea id="inp_out_tra"></textarea>
+                <input type="text" id="vid_out_tra" placeholder="Link Video Repliegue">
+
+                <label style="margin-top:10px;">Defensa Posicional / Zona Defensiva</label>
+                <textarea id="inp_out_def"></textarea>
+                <input type="text" id="vid_out_def" placeholder="Link Video Defensa">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>4. Conclusiones Finales</h3>
+        <label>Fortalezas</label><textarea id="inp_str" style="height:100px;"></textarea>
+        <label style="margin-top:10px;">Debilidades</label><textarea id="inp_weak" style="height:100px;"></textarea>
+        <label style="margin-top:10px;">Resumen General</label><textarea id="inp_sum" style="height:120px;"></textarea>
+    </div>
+
+    <button class="btn-generate" onclick="generateReport()">Generar Informe y Vista Previa</button>
+</div>
+
+
+<div class="container print-only" id="reportInterface" style="display:none; margin-top:20px;">
+    
+    <div class="report-header">
+        <div>
+            <h1 style="font-size:22px; margin:0; color:#0e2b4b;">INFORME INDIVIDUAL</h1>
+            <span style="color:#666; font-size:11px;">RCL Scout Group &copy; 2025</span>
+        </div>
+        <img id="out_logo" src="" class="report-logo" style="display:none;">
+    </div>
+
+    <div class="player-card">
+        <div class="player-img-container">
+            <img id="out_photo" class="player-img" src=""> 
+        </div>
+        <div class="player-info">
+            <div class="info-item"><span class="info-label">Nombre:</span> <span class="info-val" id="out_name"></span></div>
+            <div class="info-item"><span class="info-label">Valoración:</span> <span class="rating-badge" id="out_rating"></span></div>
+            
+            <div class="info-item"><span class="info-label">Edad:</span> <span class="info-val" id="out_age"></span></div>
+            <div class="info-item"><span class="info-label">Potencial:</span> <span class="info-val" id="out_potential"></span></div>
+            
+            <div class="info-item"><span class="info-label">Posición:</span> <span class="info-val" id="out_pos"></span></div>
+            <div class="info-item"><span class="info-label">Recomendación:</span> <span class="info-val" id="out_rec"></span></div>
+            
+            <div class="info-item"><span class="info-label">Club:</span> <span class="info-val" id="out_club"></span></div>
+            <div class="info-item"><span class="info-label">Fin Contrato:</span> <span class="info-val" id="out_contract"></span></div>
+
+            <div class="info-item"><span class="info-label">Agencia:</span> <span class="info-val" id="out_agency"></span></div>
+            <div class="info-item" style="border:none;"><a id="out_link" href="#" target="_blank">Ver Perfil Web 🔗</a></div>
+        </div>
+    </div>
+
+    <div class="context-bar">
+        <div><strong>Fecha:</strong> <span id="out_date"></span></div>
+        <div><strong>Partido:</strong> <span id="out_match"></span></div>
+        <div><strong>Result:</strong> <span id="out_score"></span></div>
+        <div><strong>Competición:</strong> <span id="out_comp"></span></div>
+        <div><strong>Lugar:</strong> <span id="out_loc"></span></div>
+        <div><strong>Scout:</strong> <span id="out_scout"></span></div>
+    </div>
+
+    <div class="matrix-container">
+        <div class="matrix-col">
+            <div class="matrix-header header-possession">En Posesión</div>
+            
+            <div id="box_in_def" class="zone-box">
+                <span class="zone-title">Zona Inicio</span>
+                <div id="out_in_def" class="zone-text"></div>
+                <a id="lnk_in_def" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+
+            <div id="box_in_tra" class="zone-box">
+                <span class="zone-title">Zona Creación</span>
+                <div id="out_in_tra" class="zone-text"></div>
+                <a id="lnk_in_tra" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+
+            <div id="box_in_att" class="zone-box">
+                <span class="zone-title">Zona Finalización</span>
+                <div id="out_in_att" class="zone-text"></div>
+                <a id="lnk_in_att" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+        </div>
+
+        <div class="matrix-col">
+            <div class="matrix-header header-nopossession">Sin Posesión</div>
+
+            <div id="box_out_att" class="zone-box">
+                <span class="zone-title">Presión Alta</span>
+                <div id="out_out_att" class="zone-text"></div>
+                <a id="lnk_out_att" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+
+            <div id="box_out_tra" class="zone-box">
+                <span class="zone-title">Repliegue / Transición</span>
+                <div id="out_out_tra" class="zone-text"></div>
+                <a id="lnk_out_tra" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+
+            <div id="box_out_def" class="zone-box">
+                <span class="zone-title">Defensa Posicional</span>
+                <div id="out_out_def" class="zone-text"></div>
+                <a id="lnk_out_def" class="video-btn" target="_blank" style="display:none;">📺 Ver Vídeo</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="conclusions-box">
+        <div class="conc-item">
+            <span class="conc-label">FORTALEZAS</span>
+            <div id="out_str" class="zone-text" style="white-space: pre-wrap;"></div>
+        </div>
+        <div class="conc-item">
+            <span class="conc-label">DEBILIDADES</span>
+            <div id="out_weak" class="zone-text" style="white-space: pre-wrap;"></div>
+        </div>
+        <div class="conc-item" style="background:#f4f4f4; padding:10px; border-radius:5px;">
+            <span class="conc-label" style="color:#333; border:none;">RESUMEN GENERAL</span>
+            <div id="out_sum" class="zone-text" style="white-space: pre-wrap;"></div>
+        </div>
+    </div>
+
+    <div class="no-print" style="margin-top:40px; text-align:center; padding:20px; border-top:2px dashed #ccc; background:#fff;">
+        <p><strong>Vista Previa Generada.</strong></p>
+        <button onclick="window.print()" style="padding:12px 25px; background:#0e2b4b; color:white; border:none; cursor:pointer; font-size:1.1em; border-radius:5px; margin-right:10px;">🖨️ Guardar PDF</button>
+        <button onclick="editMode()" style="padding:12px 25px; background:#777; color:white; border:none; cursor:pointer; font-size:1.1em; border-radius:5px;">✏️ Volver a Editar</button>
+    </div>
+</div>
+
+<script>
+    const images = {};
+
+    // Manejador imágenes
+    document.addEventListener('change', function(e) {
+        if (e.target.type === 'file') {
+            const id = e.target.id;
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) { images[id] = evt.target.result; };
+                reader.readAsDataURL(file);
+            }
+        }
+    });
+
+    function generateReport() {
+        document.getElementById('editorInterface').style.display = 'none';
+        document.getElementById('reportInterface').style.display = 'block';
+        window.scrollTo(0,0);
+
+        // Logo y Foto
+        setImage('inp_logo', 'out_logo');
+        setImage('inp_photo', 'out_photo');
+
+        // Datos Perfil
+        setText('inp_name', 'out_name');
+        setText('inp_age', 'out_age');
+        setText('inp_pos', 'out_pos');
+        setText('inp_club', 'out_club');
+        setText('inp_rating', 'out_rating');
+        setText('inp_potential', 'out_potential');
+        setText('inp_rec', 'out_rec');
+        setText('inp_agency', 'out_agency');
+        setText('inp_contract', 'out_contract');
+
+        const linkUrl = document.getElementById('inp_link').value;
+        const linkEl = document.getElementById('out_link');
+        if(linkUrl) { linkEl.href = linkUrl; linkEl.style.display="inline"; }
+        else { linkEl.style.display="none"; }
+
+        // Contexto
+        setText('inp_date', 'out_date');
+        setText('inp_comp', 'out_comp');
+        setText('inp_score', 'out_score');
+        setText('inp_loc', 'out_loc');
+        setText('inp_weather', 'out_loc'); 
+        setText('inp_scout', 'out_scout');
+        
+        const home = document.getElementById('inp_home').value;
+        const away = document.getElementById('inp_away').value;
+        document.getElementById('out_match').innerText = `${home} vs ${away}`;
+
+        // Matriz Análisis
+        setZone('inp_in_def', 'out_in_def', 'vid_in_def', 'lnk_in_def', 'box_in_def');
+        setZone('inp_in_tra', 'out_in_tra', 'vid_in_tra', 'lnk_in_tra', 'box_in_tra');
+        setZone('inp_in_att', 'out_in_att', 'vid_in_att', 'lnk_in_att', 'box_in_att');
+
+        setZone('inp_out_att', 'out_out_att', 'vid_out_att', 'lnk_out_att', 'box_out_att');
+        setZone('inp_out_tra', 'out_out_tra', 'vid_out_tra', 'lnk_out_tra', 'box_out_tra');
+        setZone('inp_out_def', 'out_out_def', 'vid_out_def', 'lnk_out_def', 'box_out_def');
+
+        // Conclusiones
+        setText('inp_str', 'out_str');
+        setText('inp_weak', 'out_weak');
+        setText('inp_sum', 'out_sum');
+    }
+
+    function editMode() {
+        document.getElementById('reportInterface').style.display = 'none';
+        document.getElementById('editorInterface').style.display = 'block';
+        window.scrollTo(0,0);
+    }
+
+    // Auxiliares
+    function setText(src, dest) {
+        document.getElementById(dest).innerText = document.getElementById(src).value;
+    }
+
+    function setImage(src, dest) {
+        if(images[src]) {
+            const el = document.getElementById(dest);
+            el.src = images[src];
+            el.style.display = 'block';
+        }
+    }
+
+    function setZone(txtSrc, txtDest, vidSrc, lnkDest, boxId) {
+        const text = document.getElementById(txtSrc).value;
+        const vid = document.getElementById(vidSrc).value;
+        
+        if(!text && !vid) {
+            document.getElementById(boxId).style.display = 'none';
+            return;
+        }
+
+        document.getElementById(boxId).style.display = 'block';
+        document.getElementById(txtDest).innerText = text;
+        
+        const lnk = document.getElementById(lnkDest);
+        if(vid) {
+            lnk.href = vid;
+            lnk.style.display = 'inline-block';
+        } else {
+            lnk.style.display = 'none';
+        }
+    }
+</script>
+
+</body>
+</html>
